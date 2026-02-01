@@ -20,7 +20,7 @@ A configurable tool for scraping and scoring apartment listings from [591.com.tw
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/591-taiwan-apartment-scraper.git
+git clone https://github.com/anarolabs/591-taiwan-apartment-scraper.git
 cd 591-taiwan-apartment-scraper
 
 # Install dependencies
@@ -112,24 +112,60 @@ Results are saved to:
 
 ## Running with Claude Code
 
-This scraper works well with [Claude Code](https://claude.ai/claude-code). Claude can:
+This scraper was built and used with [Claude Code](https://claude.ai/claude-code) by a non-Chinese speaker searching for apartments in Taipei. The key insight: **you don't need to read Chinese to use this tool effectively**.
 
-1. Run the setup wizard interactively
-2. Execute the scraping steps
-3. Help you understand and filter results
-4. Adjust scoring weights based on your feedback
+### How it works for non-Chinese speakers
+
+The scraper extracts raw Chinese text (titles, descriptions, addresses), but Claude Code can interpret everything conversationally:
+
+- **Translate listings on demand** - Ask "What does the description say?" and Claude explains it in English
+- **Interpret nuances** - Claude can identify red flags, landlord tone, lease flexibility hints buried in Chinese descriptions
+- **Answer specific questions** - "Does this listing allow pets?", "Is the landlord strict about the lease term?"
+- **Compare options** - "Which of my top 5 has the most flexible landlord?"
+
+This worked seamlessly - I never needed to use Google Translate or learn Chinese to find my apartment.
+
+### Recommended workflow (batches)
+
+I used Claude Code Max (the middle tier, not the highest) and processed listings in batches to manage context and costs:
+
+1. **Collect IDs** for one district at a time
+2. **Extract details** in batches of 20-30 listings
+3. **Review with Claude** - ask about top picks, get translations, compare options
+4. **Repeat** for next district or batch
 
 Example conversation:
 
 ```
 > Run the apartment scraper setup
 
-> Collect listings from Da'an and Xinyi districts
+> Collect listings from Da'an district
 
-> Show me the top 10 apartments under NT$30,000
+> Extract details for the first 25 listings (no images for now)
 
-> Which apartments have washing machines and are close to MRT?
+> Show me the top 10 by score. For the top 3, translate the full description
+  and tell me if there are any red flags or notable details.
+
+> The #2 listing mentions something about 房東 - what are they saying about
+  the landlord?
 ```
+
+### Image analysis (bandwidth warning)
+
+You can ask Claude to download and analyze listing photos:
+
+```
+> Download images for listing 12345678 and tell me about the apartment condition
+
+> Look at the photos for my top 5 listings - which ones look most modern?
+```
+
+**Warning**: This uses significant bandwidth. Each listing can have 10-20 images, and having Claude analyze them consumes context quickly. Recommendations:
+
+- Only download images for your shortlist (5-10 listings)
+- Process one listing's images at a time
+- Ask specific questions ("Is there a washing machine visible?") rather than open-ended analysis
+- Claude Code Max handled this fine, but be mindful of usage
 
 ## Google Sheets setup (optional)
 
@@ -174,8 +210,8 @@ For each listing:
 
 - **Rate limiting**: The scraper adds delays between requests to be respectful. Scraping all of Taipei takes time.
 - **Site changes**: 591.com.tw may change their page structure, which could break extraction.
-- **Language**: Listing data is in Chinese; the scraper extracts but doesn't translate most fields.
-- **Images**: Downloaded but not automatically analyzed. You could add vision API integration.
+- **Language**: Listing data is in Chinese. The scraper extracts but doesn't translate fields. However, if you use Claude Code, translation and interpretation happens conversationally (see "Running with Claude Code" above).
+- **Images**: Downloaded but not automatically analyzed. Claude Code can analyze images on request, but this uses significant bandwidth.
 
 ## Project structure
 
