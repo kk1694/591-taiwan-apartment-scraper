@@ -1,0 +1,27 @@
+{
+  "reference_location": {
+    "name": "Taipei Main Station",
+    "coords": [25.0478, 121.517],
+    "station": "台北車站"
+  },
+  "search_filters": {
+    "region": 1,
+    "districts": ["Da'an", "Zhongshan"],
+    "price_min": 15000,
+    "price_max": 40000,
+    "area_min": 12
+  },
+  "scoring_weights": {
+    "commute": 3,
+    "lease": 2,
+    "price": 2,
+    "size": 1,
+    "amenities": 1
+  },
+  "output": {
+    "json": true,
+    "csv": true,
+    "google_sheets": false,
+    "sheet_id": null
+  }
+}
