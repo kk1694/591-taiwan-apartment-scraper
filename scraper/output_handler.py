@@ -61,6 +61,7 @@ def export_csv(listings: list[dict], filename: str = "listings.csv") -> Path:
         "mrt_station", "mrt_distance_m",
         "commute_time_min", "transport_mode",
         "score",
+        "qualification", "is_modern", "has_elevator", "is_flat",
     ]
 
     with open(filepath, "w", newline="", encoding="utf-8") as f:

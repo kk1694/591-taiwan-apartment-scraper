@@ -11,7 +11,11 @@ import re
 import time
 import random
 import requests
+import urllib3
 from pathlib import Path
+
+# Disable SSL warnings - 591's certificate is missing Subject Key Identifier extension
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from bs4 import BeautifulSoup
 from typing import Optional
 from config import (
@@ -39,7 +43,7 @@ def fetch_listing_page(session: requests.Session, listing_id: str) -> Optional[s
 
     for attempt in range(MAX_RETRIES):
         try:
-            response = session.get(url, timeout=30)
+            response = session.get(url, timeout=30, verify=False)
             if response.status_code == 200:
                 return response.text
             elif response.status_code == 404:
@@ -344,7 +348,7 @@ def download_images(listing: dict, max_images: int = 10) -> list[str]:
 
     for i, url in enumerate(image_urls):
         try:
-            response = session.get(url, timeout=30)
+            response = session.get(url, timeout=30, verify=False)
 
             if response.status_code == 200:
                 filepath = listing_dir / f"{i+1}.jpg"

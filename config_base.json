@@ -1,0 +1,41 @@
+{
+  "reference_location": {
+    "name": "Taipei Main Station",
+    "coords": [
+      25.0478,
+      121.517
+    ],
+    "station": "\u53f0\u5317\u8eca\u7ad9"
+  },
+  "search_filters": {
+    "region": 1,
+    "districts": [
+      "Da'an",
+      "Zhongzheng",
+      "Xinyi",
+      "Songshan",
+      "Zhongshan",
+      "Neihu",
+      "Nangang",
+      "Shilin",
+      "Wanhua",
+      "Wenshan"
+    ],
+    "price_min": 40000,
+    "price_max": 100000,
+    "area_min": 20
+  },
+  "scoring_weights": {
+    "commute": 1,
+    "lease": 3,
+    "price": 5,
+    "size": 5,
+    "amenities": 5
+  },
+  "output": {
+    "json": true,
+    "csv": true,
+    "google_sheets": false,
+    "sheet_id": null
+  }
+}
