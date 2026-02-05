@@ -62,57 +62,38 @@ def extract_listing_ids(page: Page) -> list[str]:
     return list(ids)
 
 
-def scroll_and_collect(page: Page, max_scrolls: int = 50) -> list[str]:
-    """
-    Scroll through the page to load all listings and collect IDs.
-
-    591 uses either pagination or infinite scroll depending on the view.
-    """
+def scroll_and_collect(page: Page, max_pages: int = 100) -> list[str]:
+    """Collect listing IDs by clicking through pagination pages."""
     all_ids = set()
-    last_count = 0
-    no_change_count = 0
+    page_num = 1
 
-    for i in range(max_scrolls):
-        # Extract IDs from current state
+    while page_num <= max_pages:
+        # Extract IDs from current page
         current_ids = extract_listing_ids(page)
         all_ids.update(current_ids)
+        print(f"Page {page_num}: Found {len(current_ids)} IDs, {len(all_ids)} total unique")
 
-        print(f"Scroll {i+1}: Found {len(current_ids)} IDs on page, {len(all_ids)} total unique")
+        if len(current_ids) == 0:
+            print("No listings found on page, stopping.")
+            break
 
-        # Check if we're still finding new listings
-        if len(all_ids) == last_count:
-            no_change_count += 1
-            if no_change_count >= 3:
-                print("No new listings found after 3 scrolls, stopping.")
-                break
-        else:
-            no_change_count = 0
-            last_count = len(all_ids)
+        # Find next page button: <span class="navigator"><a>下一頁</a></span>
+        # When disabled: <span class="disabled navigator">
+        # Must select the one with "下一頁" (next) not "上一頁" (previous)
+        next_link = page.query_selector(".paginator-container span.navigator:not(.disabled) a:has-text('下一頁')")
 
-        # Try to load more content
-        # Method 1: Click "Load more" or pagination button if exists
-        load_more = page.query_selector("button:has-text('更多'), .load-more, .pagination a.next")
-        if load_more and load_more.is_visible():
-            try:
-                load_more.click()
-                time.sleep(2)
-                continue
-            except Exception:
-                pass
+        if not next_link:
+            print(f"Reached last page ({page_num} pages total).")
+            break
 
-        # Method 2: Scroll to bottom for infinite scroll
-        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-        time.sleep(1.5)
-
-        # Method 3: Check for pagination and click next page
-        next_page = page.query_selector(".pageNext, a[rel='next'], .pagination .next:not(.disabled)")
-        if next_page and next_page.is_visible():
-            try:
-                next_page.click()
-                time.sleep(2)
-                page.wait_for_load_state("networkidle")
-            except Exception:
-                pass
+        try:
+            next_link.click()
+            page_num += 1
+            time.sleep(2)
+            page.wait_for_load_state("networkidle", timeout=15000)
+        except Exception as e:
+            print(f"Error clicking next page: {e}")
+            break
 
     return list(all_ids)
 
@@ -206,6 +187,32 @@ def collect_all_districts(headless: bool = True) -> dict:
     return all_results
 
 
+def collect_all_taipei(headless: bool = True) -> dict:
+    """
+    Collect listing IDs from ALL 12 Taipei districts.
+    Ignores config.json district settings - always scrapes all districts.
+
+    Returns:
+        Dict mapping district names to lists of IDs
+    """
+    from config import DISTRICT_CODES
+
+    all_results = {}
+
+    for district_name, district_code in DISTRICT_CODES.items():
+        print(f"\n{'='*50}")
+        print(f"Collecting: {district_name} (code: {district_code})")
+        print(f"{'='*50}")
+
+        ids = collect_listing_ids(headless=headless, district_code=district_code)
+        all_results[district_name] = ids
+
+        # Rate limit between districts
+        time.sleep(3)
+
+    return all_results
+
+
 def save_listing_ids(ids: list[str], filename: str = "listing_ids.json") -> Path:
     """Save listing IDs to JSON file."""
     from config import get_search_filters
@@ -253,12 +260,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Collect 591 listing IDs")
     parser.add_argument("--visible", action="store_true", help="Show browser window")
     parser.add_argument("--all-districts", action="store_true", help="Collect from all configured districts")
+    parser.add_argument("--all-taipei", action="store_true", help="Collect from ALL 12 Taipei districts (ignores config)")
     parser.add_argument("--district", type=str, help="Specific district to search (e.g., 'Da'an')")
     args = parser.parse_args()
 
     headless = not args.visible
 
-    if args.all_districts:
+    if args.all_taipei:
+        results = collect_all_taipei(headless=headless)
+        if results:
+            save_all_districts(results)
+    elif args.all_districts:
         results = collect_all_districts(headless=headless)
         if results:
             save_all_districts(results)

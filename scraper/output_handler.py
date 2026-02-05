@@ -61,7 +61,7 @@ def export_csv(listings: list[dict], filename: str = "listings.csv") -> Path:
         "mrt_station", "mrt_distance_m",
         "commute_time_min", "transport_mode",
         "score",
-        "qualification", "is_modern", "has_elevator", "is_flat",
+        "is_modern", "has_elevator", "is_flat", "location", "notes",
     ]
 
     with open(filepath, "w", newline="", encoding="utf-8") as f:
@@ -77,6 +77,12 @@ def export_csv(listings: list[dict], filename: str = "listings.csv") -> Path:
             row["balcony"] = "Y" if listing.get("balcony") else "N"
             row["parking"] = "Y" if listing.get("parking") else "N"
             row["pets_allowed"] = "Y" if listing.get("pets_allowed") else "N"
+            # AI analysis fields - keep as-is (Y/N/? or text)
+            row["is_modern"] = listing.get("is_modern", "?")
+            row["has_elevator"] = listing.get("has_elevator", "?")
+            row["is_flat"] = listing.get("is_flat", "?")
+            row["location"] = listing.get("location", "")
+            row["notes"] = listing.get("notes", "")
             writer.writerow(row)
 
     print(f"Exported {len(listings)} listings to {filepath}")

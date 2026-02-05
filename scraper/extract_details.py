@@ -176,6 +176,7 @@ def extract_listing_details(html: str, listing_id: str) -> Optional[dict]:
         "building_age": None,
         "image_urls": [],
         "image_paths": [],
+        "description_zh": None,
     }
 
     soup = BeautifulSoup(html, "html.parser")
@@ -297,6 +298,16 @@ def extract_listing_details(html: str, listing_id: str) -> Optional[dict]:
 
     # Extract images
     result["image_urls"] = extract_image_urls(html)
+
+    # Extract description text for AI analysis
+    desc_elem = soup.select_one(".houseIntro, .house-info-describe, [class*='describe'], .house-pattern")
+    if desc_elem:
+        result["description_zh"] = desc_elem.get_text(separator="\n", strip=True)[:2000]
+    else:
+        # Fallback: try to get any substantial text block
+        content_elem = soup.select_one(".house-content, .detail-content, article")
+        if content_elem:
+            result["description_zh"] = content_elem.get_text(separator="\n", strip=True)[:2000]
 
     # Calculate derived fields
     if result["size_ping"]:
