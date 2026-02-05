@@ -24,6 +24,9 @@ from config import (
     NT_TO_EUR, calculate_total_monthly, estimate_utilities
 )
 
+# Checkpoint file for resume capability
+CHECKPOINT_FILE = DATA_DIR / "extraction_checkpoint.json"
+
 
 def get_session() -> requests.Session:
     """Create a requests session with headers."""
@@ -336,7 +339,7 @@ def extract_listing_details(html: str, listing_id: str) -> Optional[dict]:
 
 
 def download_images(listing: dict, max_images: int = 10) -> list[str]:
-    """Download listing images to local directory."""
+    """Download listing images to local directory. Skips already downloaded images."""
     listing_id = listing["id"]
     image_urls = listing.get("image_urls", [])[:max_images]
 
@@ -347,6 +350,7 @@ def download_images(listing: dict, max_images: int = 10) -> list[str]:
     listing_dir.mkdir(parents=True, exist_ok=True)
 
     downloaded = []
+    skipped = 0
 
     session = requests.Session()
     session.headers.update({
@@ -358,11 +362,18 @@ def download_images(listing: dict, max_images: int = 10) -> list[str]:
     })
 
     for i, url in enumerate(image_urls):
+        filepath = listing_dir / f"{i+1}.jpg"
+
+        # Skip if already downloaded
+        if filepath.exists() and filepath.stat().st_size > 0:
+            downloaded.append(str(filepath))
+            skipped += 1
+            continue
+
         try:
             response = session.get(url, timeout=30, verify=False)
 
             if response.status_code == 200:
-                filepath = listing_dir / f"{i+1}.jpg"
                 with open(filepath, "wb") as f:
                     f.write(response.content)
                 downloaded.append(str(filepath))
@@ -375,19 +386,27 @@ def download_images(listing: dict, max_images: int = 10) -> list[str]:
 
         time.sleep(0.5)
 
+    if skipped > 0:
+        print(f"    Skipped {skipped} already downloaded images")
+
     return downloaded
 
 
-def load_listing_ids(filename: str = "listing_ids.json") -> list[str]:
-    """Load listing IDs from JSON file."""
-    filepath = DATA_DIR / filename
-    if not filepath.exists():
-        # Try all_districts file
+def load_listing_ids(filename: str = None) -> list[str]:
+    """Load listing IDs from JSON file. Prefers all_districts_ids.json if no file specified."""
+    if filename:
+        filepath = DATA_DIR / filename
+    else:
+        # Prefer all_districts file, fall back to single-district file
         filepath = DATA_DIR / "all_districts_ids.json"
         if not filepath.exists():
-            print(f"Error: No listing IDs file found. Run collect_ids.py first.")
-            return []
+            filepath = DATA_DIR / "listing_ids.json"
 
+    if not filepath.exists():
+        print(f"Error: No listing IDs file found. Run collect_ids.py first.")
+        return []
+
+    print(f"Loading IDs from: {filepath.name}")
     with open(filepath) as f:
         data = json.load(f)
         # Handle both single-district and all-districts format
@@ -396,18 +415,49 @@ def load_listing_ids(filename: str = "listing_ids.json") -> list[str]:
         return data.get("ids", [])
 
 
+def load_checkpoint() -> dict:
+    """Load checkpoint data if exists."""
+    if CHECKPOINT_FILE.exists():
+        try:
+            with open(CHECKPOINT_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+    return None
+
+
+def save_checkpoint(processed_ids: set, results: list[dict], download_images_flag: bool):
+    """Save current progress to checkpoint file."""
+    with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
+        json.dump({
+            "processed_ids": list(processed_ids),
+            "results": results,
+            "download_images": download_images_flag,
+            "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")
+        }, f, ensure_ascii=False)
+
+
+def clear_checkpoint():
+    """Remove checkpoint file after successful completion."""
+    if CHECKPOINT_FILE.exists():
+        CHECKPOINT_FILE.unlink()
+        print("Checkpoint cleared.")
+
+
 def extract_all_listings(
     listing_ids: list[str] = None,
     download_images_flag: bool = False,
-    limit: int = None
+    limit: int = None,
+    resume: bool = True
 ) -> list[dict]:
     """
-    Extract details for all listings.
+    Extract details for all listings with checkpoint/resume support.
 
     Args:
         listing_ids: List of IDs to process. If None, loads from file.
         download_images_flag: Whether to download images.
         limit: Max number of listings to process (for testing).
+        resume: Whether to resume from checkpoint if available.
     """
     if listing_ids is None:
         listing_ids = load_listing_ids()
@@ -418,35 +468,79 @@ def extract_all_listings(
     if limit:
         listing_ids = listing_ids[:limit]
 
-    print(f"Processing {len(listing_ids)} listings...")
-    session = get_session()
+    # Check for existing checkpoint
+    processed_ids = set()
     results = []
 
-    for i, listing_id in enumerate(listing_ids):
-        print(f"\n[{i+1}/{len(listing_ids)}] Listing {listing_id}")
+    if resume:
+        checkpoint = load_checkpoint()
+        if checkpoint:
+            processed_ids = set(checkpoint.get("processed_ids", []))
+            results = checkpoint.get("results", [])
+            prev_download = checkpoint.get("download_images", False)
 
-        html = fetch_listing_page(session, listing_id)
-        if not html:
-            continue
+            if prev_download != download_images_flag:
+                print(f"Warning: --images flag changed from {prev_download} to {download_images_flag}")
+                print("Continuing with new setting for remaining listings.")
 
-        listing = extract_listing_details(html, listing_id)
-        if not listing:
-            continue
+            print(f"Resuming from checkpoint: {len(results)} already processed")
+            print(f"Remaining: {len(listing_ids) - len(processed_ids)} listings")
 
-        if download_images_flag and listing.get("image_urls"):
-            print(f"  Downloading {len(listing['image_urls'])} images...")
-            listing["image_paths"] = download_images(listing)
+    # Filter out already processed IDs
+    remaining_ids = [lid for lid in listing_ids if lid not in processed_ids]
+    total_count = len(listing_ids)
 
-        price = listing.get("base_rent_nt", "?")
-        size = listing.get("size_ping", "?")
-        total_eur = listing.get("total_monthly_eur", "?")
-        print(f"  Price: NT${price}, Size: {size} ping, Total: EUR {total_eur}/mo")
+    if not remaining_ids:
+        print("All listings already processed!")
+        clear_checkpoint()
+        return results
 
-        results.append(listing)
+    print(f"Processing {len(remaining_ids)} listings ({len(processed_ids)} already done)...")
+    session = get_session()
 
-        if i < len(listing_ids) - 1:
-            time.sleep(REQUEST_DELAY_SECONDS)
+    try:
+        for i, listing_id in enumerate(remaining_ids):
+            overall_idx = len(processed_ids) + i + 1
+            print(f"\n[{overall_idx}/{total_count}] Listing {listing_id}")
 
+            html = fetch_listing_page(session, listing_id)
+            if not html:
+                processed_ids.add(listing_id)  # Mark as processed even if failed
+                save_checkpoint(processed_ids, results, download_images_flag)
+                continue
+
+            listing = extract_listing_details(html, listing_id)
+            if not listing:
+                processed_ids.add(listing_id)
+                save_checkpoint(processed_ids, results, download_images_flag)
+                continue
+
+            if download_images_flag and listing.get("image_urls"):
+                print(f"  Downloading {len(listing['image_urls'])} images...")
+                listing["image_paths"] = download_images(listing)
+
+            price = listing.get("base_rent_nt", "?")
+            size = listing.get("size_ping", "?")
+            total_eur = listing.get("total_monthly_eur", "?")
+            print(f"  Price: NT${price}, Size: {size} ping, Total: EUR {total_eur}/mo")
+
+            results.append(listing)
+            processed_ids.add(listing_id)
+
+            # Save checkpoint after each listing
+            save_checkpoint(processed_ids, results, download_images_flag)
+
+            if i < len(remaining_ids) - 1:
+                time.sleep(REQUEST_DELAY_SECONDS)
+
+    except KeyboardInterrupt:
+        print(f"\n\nInterrupted! Progress saved: {len(results)} listings extracted.")
+        print(f"Resume by running the same command again.")
+        save_checkpoint(processed_ids, results, download_images_flag)
+        return results
+
+    # All done - clear checkpoint
+    clear_checkpoint()
     return results
 
 
@@ -474,7 +568,14 @@ if __name__ == "__main__":
     parser.add_argument("--ids", nargs="+", help="Specific listing IDs to process")
     parser.add_argument("--input", type=str, help="Input IDs file (default: listing_ids.json)")
     parser.add_argument("--output", type=str, default="listings.json", help="Output filename")
+    parser.add_argument("--no-resume", action="store_true", help="Start fresh, ignore checkpoint")
+    parser.add_argument("--clear-checkpoint", action="store_true", help="Clear checkpoint and exit")
     args = parser.parse_args()
+
+    if args.clear_checkpoint:
+        clear_checkpoint()
+        print("Checkpoint cleared.")
+        exit(0)
 
     listing_ids = args.ids if args.ids else None
     if not listing_ids and args.input:
@@ -483,7 +584,8 @@ if __name__ == "__main__":
     listings = extract_all_listings(
         listing_ids=listing_ids,
         download_images_flag=args.images,
-        limit=args.limit
+        limit=args.limit,
+        resume=not args.no_resume
     )
 
     if listings:
