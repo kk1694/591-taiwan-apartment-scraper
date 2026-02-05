@@ -497,10 +497,11 @@ def extract_all_listings(
 
     print(f"Processing {len(remaining_ids)} listings ({len(processed_ids)} already done)...")
     session = get_session()
+    initial_processed_count = len(processed_ids)
 
     try:
         for i, listing_id in enumerate(remaining_ids):
-            overall_idx = len(processed_ids) + i + 1
+            overall_idx = initial_processed_count + i + 1
             print(f"\n[{overall_idx}/{total_count}] Listing {listing_id}")
 
             html = fetch_listing_page(session, listing_id)
