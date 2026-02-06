@@ -4,8 +4,23 @@
 # Each listing is analyzed in a separate Claude instance for clean context
 # Resumable - tracks progress in a checkpoint file
 #
+# Usage:
+#   ./analyze_with_claude.sh           # Process forward (0 -> N)
+#   ./analyze_with_claude.sh --reverse # Process backward (N -> 0)
+#
 
 set -e
+
+# Parse arguments
+REVERSE=false
+for arg in "$@"; do
+    case $arg in
+        --reverse|-r)
+            REVERSE=true
+            shift
+            ;;
+    esac
+done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/../data"
@@ -169,17 +184,37 @@ main() {
 
     local total=$(get_listing_count)
     local analyzed_ids=$(get_analyzed_ids)
-    local analyzed_count=$(echo "$analyzed_ids" | grep -c . || echo 0)
+    local analyzed_count=0
+    if [[ -n "$analyzed_ids" ]]; then
+        analyzed_count=$(echo "$analyzed_ids" | wc -l)
+    fi
 
     echo "Total listings: $total"
     echo "Already analyzed: $analyzed_count"
     echo "Remaining: $((total - analyzed_count))"
+    if [[ "$REVERSE" == "true" ]]; then
+        echo "Direction: REVERSE (N -> 0)"
+    else
+        echo "Direction: FORWARD (0 -> N)"
+    fi
     echo ""
     echo "Press Ctrl+C to stop (progress is saved)"
     echo ""
 
+    # Build list of indices based on direction
+    local indices=()
+    if [[ "$REVERSE" == "true" ]]; then
+        for ((i=total-1; i>=0; i--)); do
+            indices+=($i)
+        done
+    else
+        for ((i=0; i<total; i++)); do
+            indices+=($i)
+        done
+    fi
+
     # Process each listing
-    for ((i=0; i<total; i++)); do
+    for i in "${indices[@]}"; do
         local listing_id=$(get_listing_id "$i")
 
         # Skip if already analyzed
